@@ -8,7 +8,7 @@ export interface CallState {
 }
 
 export interface GlobalState {
-    connectionStatus: 'connected' | 'disconnected' | 'reconnecting';
+    connectionStatus: 'connected' | 'disconnected' | 'reconnecting' | 'connecting';
     operatorStatus: 'ready' | 'lunch' | 'dnd' | 'offline';
     activeCall: CallState | null;
     tabsCount: number;

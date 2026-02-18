@@ -33,7 +33,9 @@ def broadcast_event(event_type, data):
 class SIPRequestHandler(http.server.BaseHTTPRequestHandler):
     
     def do_GET(self):
-        if self.path == '/api/sip/events':
+        # Игнорируем query params для проверки пути
+        path_without_query = self.path.split('?')[0]
+        if path_without_query == '/api/sip/events':
             self.handle_sse()
         else:
             self.send_error(404)

@@ -1,15 +1,14 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, onUnmounted } from 'vue';
+import { ref, onMounted, computed, onUnmounted, watch } from 'vue';
 import { createPinia, setActivePinia } from 'pinia';
 import { useSipStore } from '../store';
+import { useSipWorker } from '../composables/useSipWorker';
 
 // Инициализация Pinia локально для этого компонента
 const pinia = createPinia();
 setActivePinia(pinia);
 const store = useSipStore();
-
-const worker = ref<SharedWorker | null>(null);
-const port = ref<MessagePort | null>(null);
+const { initWorker, connectSip, disconnectSip, dial, answer, hangup, setStatus } = useSipWorker();
 
 // Логика таймера
 const timerRef = ref(0);
@@ -25,45 +24,28 @@ const duration = computed(() => {
 });
 
 onMounted(() => {
-  try {
-    worker.value = new SharedWorker(new URL('../sip-worker.js', import.meta.url), { type: 'module' });
-    port.value = worker.value.port;
-
-    port.value.onmessage = (event) => {
-      const { type, payload } = event.data;
-      if (type === 'SYNC_STATE') {
-        store.syncState(payload);
-      }
-    };
-
-    port.value.start();
-    port.value.postMessage({ type: 'INIT_PORT' });
-  } catch (e) {
-    console.error('Failed to init SharedWorker:', e);
-  }
+  initWorker();
 
   // Обработчик перед закрытием вкладки
   window.addEventListener('beforeunload', (e) => {
-      // Подтверждаем только если это последняя вкладка
-      if (store.tabsCount <= 1) {
+      // Подтверждаем только если это последняя вкладка и мы подключены
+      if (store.tabsCount <= 1 && store.connectionStatus === 'connected') {
           e.preventDefault();
           e.returnValue = 'Вы уверены, что хотите выйти? Это приведет к разлогину и завершению звонков.';
       }
   });
 
   // Обработчик скрытия/выгрузки страницы для логаута
-  // Примечание: Мы используем pagehide, так как он надежнее в современных браузерах для отправки beacon
   window.addEventListener('pagehide', () => {
-      // Уведомляем воркер о выходе
-      port.value?.postMessage({ type: 'CMD_DISCONNECT' });
+      // Воркер сам обработает закрытие порта при выгрузке страницы, так как порт будет закрыт браузером или onUnmounted
+      // Но явный дисконнект в воркер можно не слать, если мы полагаемся на порты.
+      // В старом коде был CMD_DISCONNECT. В composable мы закрываем порт.
 
-      if (store.tabsCount <= 1) {
+      if (store.tabsCount <= 1 && store.connectionStatus === 'connected') {
           // Отправка Beacon для надежной доставки при выгрузке
-          // Примечание: используем прямой URL, так как fetch может быть отменен
           const url = 'http://localhost:8000/api/auth/logout';
           const success = navigator.sendBeacon(url);
           if (!success) {
-               // Фоллбэк на fetch с keepalive
                fetch(url, { method: 'POST', keepalive: true });
           }
       }
@@ -85,26 +67,22 @@ onUnmounted(() => {
 const dialNumber = ref('');
 const showStatusMenu = ref(false);
 
-const sendCmd = (type: string, payload: any = {}) => {
-  port.value?.postMessage({ type, payload });
-};
-
 const handleDial = () => {
   if (!dialNumber.value) return;
-  sendCmd('CMD_DIAL', { phone: dialNumber.value });
+  dial(dialNumber.value);
 };
 
 const handleAnswer = () => {
-  sendCmd('CMD_ANSWER');
+  answer();
 };
 
 const handleHangup = () => {
-  sendCmd('CMD_HANGUP');
-  dialNumber.value = ''; // Очистить номер при сбросе, если нужно, или оставить для повторного набора
+  hangup();
+  dialNumber.value = ''; 
 };
 
-const setStatus = (s: string) => {
-    sendCmd('CMD_STATUS', { status: s });
+const handleSetStatus = (s: string) => {
+    setStatus(s);
     showStatusMenu.value = false;
 };
 
@@ -135,6 +113,23 @@ const statusColor = computed(() => {
     return map[store.operatorStatus] || '#9e9e9e';
 });
 
+// Для отображения экрана подключения
+const showConnectScreen = computed(() => {
+    return store.connectionStatus === 'disconnected' 
+        || store.connectionStatus === 'connecting' 
+        || store.connectionStatus === 'reconnecting';
+});
+const isConnecting = computed(() => store.connectionStatus === 'connecting');
+const isReconnecting = computed(() => store.connectionStatus === 'reconnecting');
+
+// Сброс локального состояния при отключении
+watch(() => store.connectionStatus, (newStatus) => {
+    if (newStatus === 'disconnected') {
+        dialNumber.value = '';
+        showStatusMenu.value = false;
+    }
+});
+
 </script>
 
 <template>
@@ -143,18 +138,25 @@ const statusColor = computed(() => {
     <div class="header">
         <div class="connection-status" :class="store.connectionStatus" :title="'Статус соединения (Tabs: ' + store.tabsCount + ')'"></div>
         
-        <div class="status-dropdown">
+        <div class="status-dropdown" v-if="!showConnectScreen">
             <button class="status-btn" @click="showStatusMenu = !showStatusMenu">
                 <span class="status-dot" :style="{ background: statusColor }"></span>
                 {{ statusLabel }}
                 <span class="chevron">▼</span>
             </button>
             <div class="status-menu" v-if="showStatusMenu">
-                <div class="menu-item" @click="setStatus('ready')"><span class="dot" style="background: #4caf50"></span>Готов</div>
-                <div class="menu-item" @click="setStatus('lunch')"><span class="dot" style="background: #ff9800"></span>Обед</div>
-                <div class="menu-item" @click="setStatus('dnd')"><span class="dot" style="background: #f44336"></span>Не беспокоить</div>
-                <div class="menu-item" @click="setStatus('offline')"><span class="dot" style="background: #9e9e9e"></span>Оффлайн</div>
+                <div class="menu-item" @click="handleSetStatus('ready')"><span class="dot" style="background: #4caf50"></span>Готов</div>
+                <div class="menu-item" @click="handleSetStatus('lunch')"><span class="dot" style="background: #ff9800"></span>Обед</div>
+                <div class="menu-item" @click="handleSetStatus('dnd')"><span class="dot" style="background: #f44336"></span>Не беспокоить</div>
+                <div class="menu-item" @click="handleSetStatus('offline')"><span class="dot" style="background: #9e9e9e"></span>Оффлайн</div>
+                <div class="menu-divider"></div>
+                <div class="menu-item danger" @click="disconnectSip">
+                    <span class="dot" style="background: #fa5252"></span>Отключиться
+                </div>
             </div>
+        </div>
+        <div class="header-title" v-else>
+            SIP Phone
         </div>
     </div>
 
@@ -162,8 +164,23 @@ const statusColor = computed(() => {
     <div class="call-panel">
         
         <transition name="fade" mode="out-in">
+            <!-- Состояние ПОДКЛЮЧЕНИЯ -->
+            <div v-if="showConnectScreen" class="view-connect" key="connect">
+                <div class="connect-icon">
+                    <svg viewBox="0 0 24 24" width="48" height="48" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+                </div>
+                <p class="connect-text" v-if="isReconnecting">Потеря связи. Попытка восстановить соединение...</p>
+                <p class="connect-text" v-else>Требуется подключение к серверу телефонии</p>
+                
+                <button class="btn-connect" @click="connectSip" :disabled="isConnecting || isReconnecting">
+                    <span v-if="isConnecting">Подключение...</span>
+                    <span v-else-if="isReconnecting">Переподключение...</span>
+                    <span v-else>Подключиться</span>
+                </button>
+            </div>
+
             <!-- Состояние ОЖИДАНИЯ / НАБОРА -->
-            <div v-if="!store.activeCall" class="view-idle" key="idle">
+            <div v-else-if="!store.activeCall" class="view-idle" key="idle">
                 <div class="display-area">
                     <input 
                         v-model="dialNumber" 
@@ -333,7 +350,19 @@ $text-dim: #909296;
         
         &:hover { background: rgba(255,255,255,0.05); }
         
+        
         .dot { width: 6px; height: 6px; border-radius: 50%; }
+        
+        &.danger {
+            color: $danger-color;
+            &:hover { background: rgba($danger-color, 0.1); }
+        }
+    }
+    
+    .menu-divider {
+        height: 1px;
+        background: rgba(255,255,255,0.05);
+        margin: 4px 0;
     }
 }
 
@@ -534,5 +563,54 @@ $text-dim: #909296;
 .fade-leave-to {
   opacity: 0;
   transform: translateY(-10px);
+}
+
+/* Экран подключения */
+.view-connect {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 20px;
+}
+
+.connect-icon {
+    margin-bottom: 16px;
+    color: $primary-color;
+    animation: pulse 2s infinite;
+}
+
+.connect-text {
+    margin-bottom: 24px;
+    color: $text-dim;
+    font-size: 0.9em;
+}
+
+.btn-connect {
+    background: $primary-color;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    
+    &:disabled { opacity: 0.7; cursor: not-allowed; }
+    &:not(:disabled):hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba($primary-color, 0.4); }
+}
+
+.header-title {
+    font-weight: 600;
+    font-size: 0.95em;
+    color: $text-color;
+}
+
+@keyframes pulse {
+    0% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.1); opacity: 0.8; }
+    100% { transform: scale(1); opacity: 1; }
 }
 </style>
