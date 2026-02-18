@@ -8,7 +8,7 @@ export function useSipWorker() {
 
     const initWorker = () => {
         try {
-            worker.value = new SharedWorker(new URL('../sip-worker.js', import.meta.url), { type: 'module' });
+            worker.value = new SharedWorker(new URL('../worker/index.ts', import.meta.url), { type: 'module' });
             port.value = worker.value.port;
 
             port.value.onmessage = (event) => {

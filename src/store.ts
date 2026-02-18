@@ -1,18 +1,5 @@
 import { defineStore } from 'pinia';
-
-export interface CallState {
-    id: string;
-    state: 'incoming' | 'talking' | 'dialing' | null;
-    phoneNumber: string;
-    startTime: number;
-}
-
-export interface GlobalState {
-    connectionStatus: 'connected' | 'disconnected' | 'reconnecting' | 'connecting';
-    operatorStatus: 'ready' | 'lunch' | 'dnd' | 'offline';
-    activeCall: CallState | null;
-    tabsCount: number;
-}
+import type { GlobalState } from './worker/worker.types';
 
 export const useSipStore = defineStore('sip', {
     state: (): GlobalState => ({
@@ -30,10 +17,5 @@ export const useSipStore = defineStore('sip', {
             this.activeCall = payload.activeCall;
             this.tabsCount = payload.tabsCount || 1;
         },
-
-        // Действия, отправляющие команды воркеру
-        // Фактическое обновление состояния зависит от возврата SYNC_STATE от воркера
-        // Однако воркер может оптимистично обновить и отправить sync.
-        // Мы НЕ обновляем локальное состояние здесь напрямую, чтобы обеспечить единственный источник истины.
     }
 });

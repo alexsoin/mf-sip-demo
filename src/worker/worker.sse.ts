@@ -1,9 +1,9 @@
-import { connectionConfig } from './config.js';
-import { updateState, globalState } from './state.js';
-import { apiLogout } from './api.js';
+import { connectionConfig } from './worker.config';
+import { updateState, globalState } from './worker.state';
+import { apiLogout } from './worker.api';
 
-let eventSource = null;
-let reconnectTimer = null;
+let eventSource: EventSource | null = null;
+let reconnectTimer: number | null = null;
 const RECONNECT_DELAY = 5000;
 const MAX_RECONNECT_ATTEMPTS = 5;
 let reconnectAttempts = 0;
@@ -36,8 +36,8 @@ export function connectSSE() {
         };
 
         eventSource.onerror = (err) => {
-            console.error('[SIP-Worker] SSE Connection Error. State:', eventSource.readyState);
-            eventSource.close();
+            console.error('[SIP-Worker] SSE Connection Error:', err, 'State:', eventSource?.readyState);
+            eventSource?.close();
             eventSource = null;
 
             if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
@@ -106,7 +106,7 @@ export function connectSSE() {
             }
         });
 
-        eventSource.addEventListener('call_ended', (e) => {
+        eventSource.addEventListener('call_ended', () => {
             updateState({ activeCall: null });
         });
 

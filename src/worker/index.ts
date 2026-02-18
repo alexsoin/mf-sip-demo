@@ -3,17 +3,24 @@
  * Entry point that coordinates state, config, SSE, and API modules.
  */
 
-import { globalState, addPort, removePort } from './worker/state.js';
-import { setApiBase, setConnectionConfig } from './worker/config.js';
-import { connectSSE, disconnectSSE, resetReconnectAttempts } from './worker/sse.js';
-import { apiDial, apiAnswer, apiHangup, apiSetStatus } from './worker/api.js';
+/// <reference lib="webworker" />
 
-self.onconnect = (e) => {
+import { globalState, addPort, removePort } from './worker.state';
+import { setApiBase, setConnectionConfig } from './worker.config';
+import { connectSSE, disconnectSSE, resetReconnectAttempts } from './worker.sse';
+import { apiDial, apiAnswer, apiHangup, apiSetStatus } from './worker.api';
+
+// Объявляем self как SharedWorkerGlobalScope
+declare const self: SharedWorkerGlobalScope;
+
+self.onconnect = (e: MessageEvent) => {
     const port = e.ports[0];
+    if (!port) return;
+
     addPort(port);
     console.log('[SIP-Worker] New connection. Ports:', globalState.tabsCount);
 
-    port.onmessage = (event) => {
+    port.onmessage = (event: MessageEvent) => {
         const { type, payload } = event.data;
         console.log('[SIP-Worker] Received:', type, payload);
 
@@ -66,7 +73,8 @@ self.onconnect = (e) => {
     port.start();
 };
 
-self.onerror = (e) => {
+self.onerror = (e: ErrorEvent) => {
     console.error('[SIP-Worker] Ошибка выполнения', e);
 };
 
+export { };

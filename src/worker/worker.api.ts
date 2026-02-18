@@ -1,7 +1,8 @@
-import { apiBase } from './config.js';
-import { globalState, updateState } from './state.js';
+import { apiBase } from './worker.config';
+import { globalState, updateState } from './worker.state';
+import type { OperatorStatus } from './worker.types';
 
-export function apiDial(phone) {
+export function apiDial(phone: string) {
     fetch(`${apiBase}/api/sip/call/dial`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -46,7 +47,7 @@ export function apiHangup() {
     updateState({ activeCall: null });
 }
 
-export function apiSetStatus(status) {
+export function apiSetStatus(status: OperatorStatus) {
     fetch(`${apiBase}/api/sip/operator/status`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

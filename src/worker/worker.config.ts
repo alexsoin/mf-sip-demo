@@ -1,15 +1,17 @@
-export let apiBase = 'http://localhost:8000'; // Fallback
+import type { ConnectionConfig } from './worker.types';
 
-export const connectionConfig = {
+export let apiBase: string = 'http://localhost:8000'; // Fallback
+
+export const connectionConfig: ConnectionConfig = {
     url: '', // Полный URL для SSE
     login: ''
 };
 
-export function setApiBase(url) {
+export function setApiBase(url: string) {
     apiBase = url;
 }
 
-export function setConnectionConfig(login, url) {
+export function setConnectionConfig(login: string, url: string) {
     connectionConfig.login = login;
     connectionConfig.url = url;
 }
