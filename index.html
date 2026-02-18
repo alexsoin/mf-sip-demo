@@ -1,13 +1,62 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>sip-widget</title>
-  </head>
-  <body>
-    <sip-phone-widget></sip-phone-widget>
-    <script type="module" src="/src/main.ts"></script>
-  </body>
+
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>sip-widget</title>
+</head>
+
+<body>
+  <sip-phone-widget id="sip-widget"></sip-phone-widget>
+
+  <div
+    style="position: fixed; top: 20px; left: 20px; z-index: 1000; background: #333; color: #fff; padding: 20px; border: 1px solid #555; border-radius: 8px; font-family: sans-serif;">
+    <h3 style="margin-top: 0;">Host Control</h3>
+    <div style="margin-bottom: 10px;">
+      <input type="text" id="phone-input" placeholder="Enter phone number" value="123456"
+        style="padding: 5px; background: #444; color: #fff; border: 1px solid #666;">
+      <button id="btn-call"
+        style="padding: 5px 10px; cursor: pointer; background: #666; color: white; border: none;">Call</button>
+    </div>
+    <div>
+      <button id="btn-state"
+        style="padding: 5px 10px; cursor: pointer; background: #666; color: white; border: none;">Request State</button>
+    </div>
+    <div style="margin-top: 10px;">
+      <h4>Last State:</h4>
+      <pre id="state-log"
+        style="background: #222; color: #0f0; padding: 10px; font-size: 12px; max-width: 300px; max-height: 200px; overflow: auto; border: 1px solid #444;"></pre>
+    </div>
+  </div>
+
+  <script>
+    const widget = document.getElementById('sip-widget');
+    const btnCall = document.getElementById('btn-call');
+    const btnState = document.getElementById('btn-state');
+    const phoneInput = document.getElementById('phone-input');
+    const stateLog = document.getElementById('state-log');
+
+    btnCall.addEventListener('click', () => {
+      const number = phoneInput.value;
+      console.log('[Host] Dispatching sip-call event:', number);
+      widget.dispatchEvent(new CustomEvent('sip-call', {
+        detail: { number }
+      }));
+    });
+
+    btnState.addEventListener('click', () => {
+      console.log('[Host] Dispatching sip-request-state event');
+      widget.dispatchEvent(new CustomEvent('sip-request-state'));
+    });
+
+    widget.addEventListener('state-changed', (e) => {
+      console.log('[Host] Received state-changed event:', e.detail);
+      stateLog.textContent = JSON.stringify(e.detail, null, 2);
+    });
+  </script>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+
 </html>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, onUnmounted, watch } from 'vue';
+import { ref, onMounted, computed, onUnmounted, watch, getCurrentInstance } from 'vue';
 import { createPinia, setActivePinia } from 'pinia';
 import { useSipStore } from '../store';
 import { useSipWorker } from '../composables/useSipWorker';
@@ -129,6 +129,59 @@ watch(() => store.connectionStatus, (newStatus) => {
         showStatusMenu.value = false;
     }
 });
+
+// --- Host Interaction ---
+const instance = getCurrentInstance();
+// eslint-disable-next-line vue/valid-define-emits
+const emit = defineEmits<{
+  (e: 'state-changed', payload: any): void
+}>();
+
+const emitState = () => {
+    const state = {
+        connectionStatus: store.connectionStatus,
+        operatorStatus: store.operatorStatus,
+        activeCall: store.activeCall ? JSON.parse(JSON.stringify(store.activeCall)) : null,
+        tabsCount: store.tabsCount
+    };
+    
+    // Vue's defineCustomElement automatically dispatches events declared in emits
+    emit('state-changed', state);
+};
+
+// Слушаем изменения в сторе и отправляем наружу
+watch(() => [store.connectionStatus, store.operatorStatus, store.activeCall, store.tabsCount], () => {
+    emitState();
+}, { deep: true });
+
+onMounted(() => {
+    // Access the host element to attach listeners
+    // In defineCustomElement, vnode.el is the shadow root content, so we need to traverse up
+    const internalElement = instance?.vnode.el as HTMLElement | undefined;
+    const host = (internalElement?.getRootNode() as ShadowRoot)?.host as HTMLElement;
+
+    if (host) {
+        host.addEventListener('sip-call', ((e: CustomEvent) => {
+            const detail = e.detail;
+            if (store.connectionStatus !== 'connected') {
+                console.warn('[SipWidget] Cannot dial: Not connected.');
+                return;
+            }
+
+            if (detail && detail.number) {
+                 dial(detail.number);
+            }
+        }) as EventListener);
+
+        host.addEventListener('sip-request-state', () => {
+            emitState();
+        });
+        
+        // Initial state emit
+        emitState();
+    }
+});
+// --- Host Interaction END ---
 
 </script>
 
