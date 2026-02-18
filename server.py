@@ -17,6 +17,7 @@ GLOBAL_STATE = {
 
 def broadcast_event(event_type, data):
     """Отправка события SSE всем подключенным клиентам"""
+    print(f"[SSE] Broadcasting event: {event_type}, Clients: {len(SSE_QUEUE)}, Data: {data}")
     msg = f"event: {event_type}\ndata: {json.dumps(data)}\n\n"
     dead_queues = []
     
@@ -51,6 +52,7 @@ class SIPRequestHandler(http.server.BaseHTTPRequestHandler):
         content_length = int(self.headers.get('Content-Length', 0))
         body = self.rfile.read(content_length)
         data = json.loads(body) if body else {}
+        print(f"[API] POST {self.path} Body: {data}")
 
         response = {"status": "ok"}
         
@@ -130,6 +132,7 @@ class SIPRequestHandler(http.server.BaseHTTPRequestHandler):
                     # Если разговор или набор, мы могли бы отправить другое событие, но пока считаем как connected
                     else:
                          # Упрощено: просто говорим connected, если не incoming
+                         print(f"[SSE] Sending initial state: call_connected for {GLOBAL_STATE['activeCall']['id']}")
                          self.wfile.write(f"event: call_connected\ndata: {json.dumps({'start_time': GLOBAL_STATE['activeCall']['startTime']})}\n\n".encode())
             
             self.wfile.flush()
@@ -160,6 +163,7 @@ if __name__ == '__main__':
                         "phoneNumber": "+79001234567",
                         "startTime": int(time.time() * 1000)
                     }
+                    print(f"[Sim] Generating incoming call: {GLOBAL_STATE['activeCall']['id']}")
                     broadcast_event("call_incoming", {
                         "number": GLOBAL_STATE["activeCall"]["phoneNumber"], 
                         "call_id": GLOBAL_STATE["activeCall"]["id"]
